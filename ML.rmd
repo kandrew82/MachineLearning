@@ -1,5 +1,5 @@
 ---
-title: "ML"
+title: "ML Project"
 author: "Andrea Terlizzi"
 date: "17 marzo 2017"
 output: html_document
@@ -9,22 +9,183 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## R Markdown
+## Data Exploration
 
-This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+Training and test set are loaded from project directory
 
-When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
-
-```{r cars}
-summary(cars)
+```{r}
+training<-read.csv("pml-training.csv",header=TRUE,stringsAsFactors = FALSE)
+test<-read.csv("pml-testing.csv",header=TRUE,stringsAsFactors = FALSE)
 ```
 
-## Including Plots
+Training set has 19622 observations and 160 attributes. Test set has 20 observations without the class attribute "classe".
 
-You can also embed plots, for example:
-
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r}
+dim(training)
 ```
 
-Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
+First of all I factorize the class attribute and view its distribution (quite balanced).
+
+```{r}
+training$classe<-as.factor(training$classe)
+counts <- table(training$classe)
+barplot(counts)
+```
+
+Then I clean the training set, removing all useful or unnecessary attributes.
+So, the attributes with many missing values are excluded,
+
+```{r}
+missing<- sapply(training, function(x) sum(is.na(x)))
+v<-vector()
+j<-1
+for(i in 1:length(missing))
+{
+  if(missing[i]==0)
+  {
+    v[j]<-i
+    j<-j+1
+  }
+}
+training1<-training[v]
+test1<-test[v]
+```
+
+And also the attributes not relevant for the analysis.
+
+```{r}
+characters<- sapply(training1, function(x) is.character(x))
+v<-vector()
+j<-1
+for(i in 1:length(characters))
+{
+  if(!characters[i])
+  {
+    v[j]<-i
+    j<-j+1
+  }
+}
+training2<-training1[v]
+test2<-test1[v]
+
+training3<-training2[-c(1,2,3,4)]
+test3<-test2[-c(1,2,3,4)]
+```
+
+I split the training set, taking a 70% to build a model and a 30% to evaluate the model.
+
+```{r}
+set.seed(1982) 
+sample <- sample.int(nrow(training3), floor(.70*nrow(training3)), replace = F)
+trainset <- training3[sample, ]
+testset <- training3[-sample, ]
+```
+
+Because all the attributes are numeric and the class attribute is nominal, I choose to apply a multinomial logistic regression tecnique using the library nnet for speed performance.
+
+```{r,message=FALSE,warning=FALSE}
+library(nnet)
+model<-multinom(classe~.,data=trainset)
+```
+
+The model is used to predict the remaining 30% of the training (excluding the class attribute of course)
+
+```{r,message=FALSE,warning=FALSE}
+tp <- cbind(trainset, predict(model, newdata = trainset, type = "probs", se = TRUE))
+v<-vector()
+j<-1
+for(i in 1:nrow(tp))
+{
+  if(tp$A[i]>tp$B[i] && tp$A[i]>tp$C[i] && tp$A[i]>tp$D[i] && tp$A[i]>tp$E[i])
+  {
+    v[j]="A"
+  }
+  else if(tp$B[i]>tp$C[i] && tp$B[i]>tp$D[i] && tp$B[i]>tp$E[i])
+  {
+    v[j]="B"
+  }
+  else if(tp$C[i]>tp$D[i] && tp$C[i]>tp$E[i])
+  {
+    v[j]="C"
+  }
+  else if(tp$D[i]>tp$E[i])
+  {
+    v[j]="D"
+  }
+  else v[j]="E"
+  j<-j+1
+}
+evaluation<-cbind(tp,v)
+library(caret)
+confusionMatrix(evaluation$classe,evaluation$v)
+```
+
+The results show a 66% of accuracy that is a good value.
+Now I try to improve the performance building the model on the whole training set.
+
+```{r,message=FALSE,warning=FALSE}
+set.seed(1982) 
+sample <- sample.int(nrow(training3), floor(.100*nrow(training3)), replace = F)
+trainset <- training3[sample, ]
+testset <- training3[-sample, ]
+model<-multinom(classe~.,data=trainset)
+tp <- cbind(trainset, predict(model, newdata = trainset, type = "probs", se = TRUE))
+v<-vector()
+j<-1
+for(i in 1:nrow(tp))
+{
+  if(tp$A[i]>tp$B[i] && tp$A[i]>tp$C[i] && tp$A[i]>tp$D[i] && tp$A[i]>tp$E[i])
+  {
+    v[j]="A"
+  }
+  else if(tp$B[i]>tp$C[i] && tp$B[i]>tp$D[i] && tp$B[i]>tp$E[i])
+  {
+    v[j]="B"
+  }
+  else if(tp$C[i]>tp$D[i] && tp$C[i]>tp$E[i])
+  {
+    v[j]="C"
+  }
+  else if(tp$D[i]>tp$E[i])
+  {
+    v[j]="D"
+  }
+  else v[j]="E"
+  j<-j+1
+}
+evaluation<-cbind(tp,v)
+library(caret)
+confusionMatrix(evaluation$classe,evaluation$v)
+```
+
+The performance are a little better, 69%, so I decide to try the prediction of the 20-observation dataset and submit the results in the course quiz.
+
+```{r}
+tp <- cbind(test3, predict(model, newdata = test3, type = "probs", se = TRUE))
+v<-vector()
+j<-1
+for(i in 1:nrow(tp))
+{
+  if(tp$A[i]>tp$B[i] && tp$A[i]>tp$C[i] && tp$A[i]>tp$D[i] && tp$A[i]>tp$E[i])
+  {
+    v[j]="A"
+  }
+  else if(tp$B[i]>tp$C[i] && tp$B[i]>tp$D[i] && tp$B[i]>tp$E[i])
+  {
+    v[j]="B"
+  }
+  else if(tp$C[i]>tp$D[i] && tp$C[i]>tp$E[i])
+  {
+    v[j]="C"
+  }
+  else if(tp$D[i]>tp$E[i])
+  {
+    v[j]="D"
+  }
+  else v[j]="E"
+  j<-j+1
+}
+prediction<-cbind(tp,v)
+```
+
+The submitted sequence BAACADDCAADABAEAABBB scores 80% of exact prediction, so i passed the quiz and submitted this report :)
